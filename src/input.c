@@ -36,6 +36,8 @@
 
 #define LOGPREFIX "Sound device: "
 
+#ifdef HAVE_ALSA
+
 int input_initialize(snd_pcm_t * handle, short **buffer, int *buffer_l)
 {
 	int err;
@@ -129,3 +131,4 @@ void input_cleanup(snd_pcm_t *handle)
 {
 	snd_pcm_close(handle);
 }
+#endif

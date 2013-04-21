@@ -27,6 +27,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
 #include "ais.h"
 #include "input.h"
@@ -62,9 +64,10 @@ void brokenconnection(int sig)
 
 int main(int argc, char *argv[])
 {
-	int err;
 	done = 0;
+#ifdef HAVE_ALSA
 	snd_pcm_t *handle;
+#endif
 	FILE *sound_in_fd = NULL;
 	FILE *sound_out_fd = NULL;
 	int channels;
@@ -147,6 +150,7 @@ int main(int argc, char *argv[])
 		rx_a = init_receiver('A', 1, 0,serial,ipc);
 		channels = 1;
 	}
+	
 #ifdef HAVE_PULSEAUDIO
 	if(sound_device != NULL && ((strcmp("pulse",sound_device) == 0) || (strcmp("pulseaudio",sound_device) == 0))){
 		if((pa_dev = pulseaudio_initialize()) == NULL){
@@ -157,12 +161,11 @@ int main(int argc, char *argv[])
 		int extra = buffer_l % 5;
 		buffer_l -= extra;
 		buffer = (short *) hmalloc(buffer_l * sizeof(short) * channels);
-	}
-	else if (sound_device){
-#else
-	if (sound_device){
+	} else
 #endif
-
+#ifdef HAVE_ALSA
+	if (sound_device){
+		int err;
 		if ((err = snd_pcm_open(&handle, sound_device, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
 			hlog(LOG_CRIT, "Error opening sound device (%s)", sound_device);
 			return -1;
@@ -170,7 +173,9 @@ int main(int argc, char *argv[])
 		
 		if (input_initialize(handle, &buffer, &buffer_l) < 0)
 			return -1;
-	} else if (sound_in_file) {
+	} else
+#endif
+	if (sound_in_file) {
 		if ((sound_in_fd = fopen(sound_in_file, "r")) == NULL) {
 			hlog(LOG_CRIT, "Could not open sound file %s: %s", sound_in_file, strerror(errno));
 			return -1;
@@ -216,16 +221,22 @@ int main(int argc, char *argv[])
 			buffer_read = fread(buffer, channels * sizeof(short), buffer_l, sound_in_fd);
 			if (buffer_read <= 0)
 				done = 1;
-		} 
+		} else 
 #ifdef HAVE_PULSEAUDIO
-		else if (pa_dev){
+		if (pa_dev){
 			buffer_read = pulseaudio_read(pa_dev, buffer, buffer_l);
+		} else
+#endif
+#ifdef HAVE_AUDIOUNIT
+		{
 		}
 #endif
-		else {
+#ifdef HAVE_ALSA
+		{
 			buffer_read = input_read(handle, buffer, buffer_l);
 			//printf("read %d\n", buffer_read);
 		}
+#endif
 		if (buffer_read <= 0)
 			continue;
 		
@@ -265,16 +276,22 @@ int main(int argc, char *argv[])
 	hlog(LOG_NOTICE, "Closing down...");
 	if (sound_in_fd) {
 		fclose(sound_in_fd);
-	}
+	} else
 #ifdef HAVE_PULSEAUDIO
-	else if (pa_dev) {
+	if (pa_dev) {
 		pulseaudio_cleanup(pa_dev);
+	} else
+#endif
+#ifdef HAVE_AUDIOUNIT
+	{
 	}
 #endif
-	else {
+#ifdef HAVE_ALSA
+	{
 		input_cleanup(handle);
 		handle = NULL;
 	}
+#endif
 
 	
 	if (sound_out_fd)
