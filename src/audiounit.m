@@ -3,16 +3,19 @@
  *	AudioUnit code for OS X
  */
 
-#include <AudioUnit/AudioComponent.h>
-#include <AudioUnit/AUComponent.h>
-#include <AudioUnit/AudioUnitProperties.h>
-#include <CoreAudio/AudioHardware.h>
+#import <Cocoa/Cocoa.h>
+#import <AudioUnit/AudioComponent.h>
+#import <AudioUnit/AUComponent.h>
+#import <AudioUnit/AudioUnitProperties.h>
+#import <CoreAudio/AudioHardware.h>
+//#import <CoreServices/Debugging.h>
 
 #include "../config.h"
 #include "audiounit.h"
 #include "hlog.h"
 
 AudioComponentInstance auHAL;
+AudioDeviceID inputDevice;
 
 /*
  *	Open up a device, this works on 10.6 and later
@@ -79,12 +82,56 @@ static int audiounit_enable_input()
 	return 0;
 }
 
+OSStatus audiounit_select_format()
+{
+	OSStatus err = noErr;
+	AudioStreamBasicDescription DesiredFormat = {0};
+	AudioStreamBasicDescription DeviceFormat = {0};
+	UInt32 size = sizeof(DeviceFormat);
+	
+	AudioObjectPropertyAddress addr = {
+		kAudioDevicePropertyStreamFormat,
+		kAudioDevicePropertyScopeInput,
+		inputDevice };
+	
+	// Get the input device format
+	err = AudioObjectGetPropertyData(kAudioObjectSystemObject,
+		&addr,
+		0,
+		NULL,
+		&size,
+		&DeviceFormat);
+	
+	if (err != noErr) {
+		//NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
+		//hlog(LOG_ERR, "Failed to get AudioUnit default format: %s", GetMacOSStatusErrorString(err));
+		return -1;
+	}
+	
+	//set the desired format to the device's sample rate
+	DesiredFormat.mSampleRate =  44100;
+	
+	//set format to output scope
+	err = AudioUnitSetProperty(
+		auHAL,
+		kAudioUnitProperty_StreamFormat,
+		kAudioUnitScope_Output,
+		1,
+		&DesiredFormat,
+		sizeof(AudioStreamBasicDescription));
+	
+	/*if (err)
+		hlog(LOG_ERR, "Failed to set AudioUnit default input device: %s", GetMacOSStatusErrorString(err));
+	*/
+	hlog(LOG_DEBUG, "audiounit_select_format success");
+	
+	return err;
+}
+
 OSStatus audiounit_select_default_input()
 {
-	UInt32 size;
 	OSStatus err = noErr;
-	AudioDeviceID inputDevice;
-	size = sizeof(AudioDeviceID);
+	UInt32 size = sizeof(AudioDeviceID);
 	
 	AudioObjectPropertyAddress theAddress = {
 		kAudioHardwarePropertyDefaultInputDevice,
@@ -117,6 +164,8 @@ OSStatus audiounit_select_default_input()
 	return err;
 }
 
+
+
 int audiounit_initialize(const char *device)
 {
 	if (audiounit_open(device) < 0)
@@ -127,6 +176,11 @@ int audiounit_initialize(const char *device)
 	
 	if (audiounit_select_default_input() != noErr)
 		return -1;
+	
+	if (audiounit_select_format() != noErr)
+		return -1;
+	
+	hlog(LOG_DEBUG, "audiounit initialized");
 	
 	return 0;
 }

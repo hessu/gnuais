@@ -4,7 +4,7 @@ if(HAVE_PULSEAUDIO)
         set(SOURCES ${SOURCES} pulseaudio.c)
 endif()
 if(HAVE_AUDIOUNIT)
-        set(SOURCES ${SOURCES} audiounit.c)
+        set(SOURCES ${SOURCES} audiounit.m)
 endif()
 add_executable(gnuais ${SOURCES})
 
