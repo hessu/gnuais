@@ -1,1 +1,9 @@
 createdeb
+*~
+
+Makefile
+config.h
+cmake_install.cmake
+
+CMakeFiles
+CMakeCache.txt
