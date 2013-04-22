@@ -1,4 +1,5 @@
 #cmakedefine HAVE_ALSA 1
+#cmakedefine HAVE_AUDIOUNIT
 
 #cmakedefine HAVE_CURL
 

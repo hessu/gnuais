@@ -45,6 +45,7 @@
 #ifdef HAVE_PULSEAUDIO
 #include "pulseaudio.h"
 #endif
+#include "audiounit.h"
 
 
 #ifdef DMALLOC
@@ -78,10 +79,13 @@ int main(int argc, char *argv[])
 	struct ipc_state_t *ipc = NULL;
 	struct receiver *rx_a = NULL;
 	struct receiver *rx_b = NULL;
+	time_t last_stats = time(NULL);
 #ifdef HAVE_PULSEAUDIO
 	pa_simple *pa_dev = NULL;
 #endif
-	time_t last_stats = time(NULL);
+#ifdef HAVE_AUDIOUNIT
+	int au_dev = -1;
+#endif
 	
 	/* command line */
 	parse_cmdline(argc, argv);
@@ -152,9 +156,21 @@ int main(int argc, char *argv[])
 	}
 	
 #ifdef HAVE_PULSEAUDIO
-	if(sound_device != NULL && ((strcmp("pulse",sound_device) == 0) || (strcmp("pulseaudio",sound_device) == 0))){
-		if((pa_dev = pulseaudio_initialize()) == NULL){
+	if (sound_device != NULL && ((strcmp("pulse",sound_device) == 0) || (strcmp("pulseaudio",sound_device) == 0))){
+		if ((pa_dev = pulseaudio_initialize()) == NULL) {
 			hlog(LOG_CRIT, "Error opening pulseaudio device");
+			return -1;
+		}
+		buffer_l = 1024;
+		int extra = buffer_l % 5;
+		buffer_l -= extra;
+		buffer = (short *) hmalloc(buffer_l * sizeof(short) * channels);
+	} else
+#endif
+#ifdef HAVE_AUDIOUNIT
+	if (sound_device) {
+		if ((au_dev = audiounit_initialize(sound_device)) == -1) {
+			hlog(LOG_CRIT, "Error opening CoreAudio/AudioUnit device");
 			return -1;
 		}
 		buffer_l = 1024;
