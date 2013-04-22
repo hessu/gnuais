@@ -8,7 +8,7 @@
 #import <AudioUnit/AUComponent.h>
 #import <AudioUnit/AudioUnitProperties.h>
 #import <CoreAudio/AudioHardware.h>
-//#import <CoreServices/Debugging.h>
+#import <CoreAudio/CoreAudioTypes.h>
 
 #include "../config.h"
 #include "audiounit.h"
@@ -85,17 +85,16 @@ static int audiounit_enable_input()
 OSStatus audiounit_select_format()
 {
 	OSStatus err = noErr;
-	AudioStreamBasicDescription DesiredFormat = {0};
 	AudioStreamBasicDescription DeviceFormat = {0};
 	UInt32 size = sizeof(DeviceFormat);
 	
 	AudioObjectPropertyAddress addr = {
 		kAudioDevicePropertyStreamFormat,
 		kAudioDevicePropertyScopeInput,
-		inputDevice };
+		0 };
 	
 	// Get the input device format
-	err = AudioObjectGetPropertyData(kAudioObjectSystemObject,
+	err = AudioObjectGetPropertyData(inputDevice,
 		&addr,
 		0,
 		NULL,
@@ -103,13 +102,20 @@ OSStatus audiounit_select_format()
 		&DeviceFormat);
 	
 	if (err != noErr) {
-		//NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
-		//hlog(LOG_ERR, "Failed to get AudioUnit default format: %s", GetMacOSStatusErrorString(err));
+		NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
+		NSString *errstr = [error localizedDescription];
+		const char *s = [errstr UTF8String];
+		hlog(LOG_ERR, "Failed to get AudioUnit default format: %s", s);
 		return -1;
 	}
 	
 	//set the desired format to the device's sample rate
-	DesiredFormat.mSampleRate =  44100;
+	DeviceFormat.mSampleRate = 48000;
+	DeviceFormat.mFormatID = kAudioFormatLinearPCM;
+	DeviceFormat.mFormatFlags = kAudioFormatFlagIsBigEndian;
+	DeviceFormat.mChannelsPerFrame = 2;
+	DeviceFormat.mBitsPerChannel = 16;
+	DeviceFormat.mBytesPerPacket = 16;
 	
 	//set format to output scope
 	err = AudioUnitSetProperty(
@@ -117,12 +123,17 @@ OSStatus audiounit_select_format()
 		kAudioUnitProperty_StreamFormat,
 		kAudioUnitScope_Output,
 		1,
-		&DesiredFormat,
+		&DeviceFormat,
 		sizeof(AudioStreamBasicDescription));
 	
-	/*if (err)
-		hlog(LOG_ERR, "Failed to set AudioUnit default input device: %s", GetMacOSStatusErrorString(err));
-	*/
+	if (err) {
+		NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
+		NSString *errstr = [error localizedDescription];
+		const char *s = [errstr UTF8String];
+		hlog(LOG_ERR, "Failed to set AudioUnit default input device: %s", s);
+		return err;
+	}
+
 	hlog(LOG_DEBUG, "audiounit_select_format success");
 	
 	return err;
