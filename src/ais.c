@@ -245,6 +245,7 @@ int main(int argc, char *argv[])
 #endif
 #ifdef HAVE_AUDIOUNIT
 		{
+			buffer_read = audiounit_read(buffer, buffer_l);
 		}
 #endif
 #ifdef HAVE_ALSA

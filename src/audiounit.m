@@ -9,10 +9,12 @@
 #import <AudioUnit/AudioUnitProperties.h>
 #import <CoreAudio/AudioHardware.h>
 #import <CoreAudio/CoreAudioTypes.h>
+#import <AudioUnit/AudioOutputUnit.h>
 
 #include "../config.h"
 #include "audiounit.h"
 #include "hlog.h"
+#include "hmalloc.h"
 
 AudioComponentInstance auHAL;
 AudioDeviceID inputDevice;
@@ -82,10 +84,11 @@ static int audiounit_enable_input()
 	return 0;
 }
 
+AudioStreamBasicDescription DeviceFormat = {0};
+
 OSStatus audiounit_select_format()
 {
 	OSStatus err = noErr;
-	AudioStreamBasicDescription DeviceFormat = {0};
 	UInt32 size = sizeof(DeviceFormat);
 	
 	AudioObjectPropertyAddress addr = {
@@ -175,7 +178,57 @@ OSStatus audiounit_select_default_input()
 	return err;
 }
 
+AudioBufferList bufferList; /* allocated to hold buffer data  */
 
+OSStatus InputProc(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags,
+	const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames,
+	AudioBufferList * ioData)
+{
+	OSStatus err = noErr;
+	
+	hlog(LOG_DEBUG, "InputProc");
+	
+	err = AudioUnitRender(auHAL,
+		ioActionFlags,
+		inTimeStamp, 
+		inBusNumber,     //will be '1' for input data
+		inNumberFrames, //# of frames requested
+		&bufferList);
+		
+	return err;
+}
+
+OSStatus audiounit_input_callback_setup(void)
+{
+	int bufferSize = 4096;
+	bufferList.mNumberBuffers = 1;
+	bufferList.mBuffers[0].mDataByteSize = bufferSize;
+	bufferList.mBuffers[0].mNumberChannels = DeviceFormat.mChannelsPerFrame;
+	bufferList.mBuffers[0].mData = hmalloc(sizeof(UInt8) * 1024 * DeviceFormat.mBytesPerPacket);
+	
+	AURenderCallbackStruct input;
+	input.inputProc = InputProc;
+	input.inputProcRefCon = 0;
+	
+	AudioUnitSetProperty(
+		auHAL, 
+		kAudioOutputUnitProperty_SetInputCallback, 
+		kAudioUnitScope_Global,
+		0,
+		&input, 
+		sizeof(input));
+	
+	OSStatus err = noErr;
+	err = AudioUnitInitialize(auHAL);
+	if (err)
+		return err;
+	
+	hlog(LOG_DEBUG, "AudioOutputUnitStart");
+	err = AudioOutputUnitStart(auHAL);
+	
+	return err;
+}
+	
 
 int audiounit_initialize(const char *device)
 {
@@ -191,7 +244,16 @@ int audiounit_initialize(const char *device)
 	if (audiounit_select_format() != noErr)
 		return -1;
 	
+	if (audiounit_input_callback_setup() != noErr)
+		return -1;
+	
 	hlog(LOG_DEBUG, "audiounit initialized");
 	
 	return 0;
 }
+
+int audiounit_read(short *buffer, int len)
+{
+	return 0;
+}
+
