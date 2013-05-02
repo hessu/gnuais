@@ -83,9 +83,6 @@ int main(int argc, char *argv[])
 #ifdef HAVE_PULSEAUDIO
 	pa_simple *pa_dev = NULL;
 #endif
-#ifdef HAVE_AUDIOUNIT
-	int au_dev = -1;
-#endif
 	
 	/* command line */
 	parse_cmdline(argc, argv);
@@ -169,7 +166,7 @@ int main(int argc, char *argv[])
 #endif
 #ifdef HAVE_AUDIOUNIT
 	if (sound_device) {
-		if ((au_dev = audiounit_initialize(sound_device)) == -1) {
+		if ((audiounit_initialize(sound_device)) == -1) {
 			hlog(LOG_CRIT, "Error opening CoreAudio/AudioUnit device");
 			return -1;
 		}
@@ -232,6 +229,11 @@ int main(int argc, char *argv[])
 	
 	hlog(LOG_NOTICE, "Started");
 	
+#ifdef HAVE_AUDIOUNIT
+	while (!done) {
+		sleep(1);
+	}
+#else
 	while (!done) {
 		if (sound_in_fd) {
 			buffer_read = fread(buffer, channels * sizeof(short), buffer_l, sound_in_fd);
@@ -242,11 +244,6 @@ int main(int argc, char *argv[])
 		if (pa_dev){
 			buffer_read = pulseaudio_read(pa_dev, buffer, buffer_l);
 		} else
-#endif
-#ifdef HAVE_AUDIOUNIT
-		{
-			buffer_read = audiounit_read(buffer, buffer_l);
-		}
 #endif
 #ifdef HAVE_ALSA
 		{
@@ -289,6 +286,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+#endif
 	
 	hlog(LOG_NOTICE, "Closing down...");
 	if (sound_in_fd) {

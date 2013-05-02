@@ -19,6 +19,18 @@
 AudioComponentInstance auHAL;
 AudioDeviceID inputDevice;
 
+void hlog_nserr(int level, const char *msg, OSStatus err)
+{
+	NSAutoreleasePool *pool = [NSAutoreleasePool new];
+	NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
+
+	NSString *errstr = [error description]; // [error localizedDescription];
+	const char *s = [errstr UTF8String];
+	
+	hlog(level, "%s: %s", msg, s);
+}
+
+
 /*
  *	Open up a device, this works on 10.6 and later
  */
@@ -59,29 +71,39 @@ static int audiounit_open(const char *device)
 static int audiounit_enable_input()
 {
 	UInt32 enableIO;
+	OSStatus err = noErr;
 	
 	// When using AudioUnitSetProperty the 4th parameter in the method
 	// refer to an AudioUnitElement. When using an AudioOutputUnit
 	// the input element will be '1' and the output element will be '0'.
 	
 	enableIO = 1;
-	AudioUnitSetProperty(auHAL,
+	err = AudioUnitSetProperty(auHAL,
 		kAudioOutputUnitProperty_EnableIO,
 		kAudioUnitScope_Input,
 		1, // input element
 		&enableIO,
 		sizeof(enableIO));
 	
+	if (err) {
+		hlog_nserr(LOG_ERR, "Failed to enable AudioUnit input", err);
+		return err;
+	}
+	
 	enableIO = 0;
-	AudioUnitSetProperty(auHAL,
+	err = AudioUnitSetProperty(auHAL,
 		kAudioOutputUnitProperty_EnableIO,
 		kAudioUnitScope_Output,
 		0,   //output element
 		&enableIO,
 		sizeof(enableIO));
+		
+	if (err) {
+		hlog_nserr(LOG_ERR, "Failed to disable AudioUnit output", err);
+		return err;
+	}
 	
-	
-	return 0;
+	return err;
 }
 
 AudioStreamBasicDescription DeviceFormat = {0};
@@ -113,27 +135,70 @@ OSStatus audiounit_select_format()
 	}
 	
 	//set the desired format to the device's sample rate
-	DeviceFormat.mSampleRate = 48000;
+	DeviceFormat.mSampleRate = 44100.0;
 	DeviceFormat.mFormatID = kAudioFormatLinearPCM;
-	DeviceFormat.mFormatFlags = kAudioFormatFlagIsBigEndian;
+	DeviceFormat.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger; //kCAFLinearPCMFormatFlagIsLittleEndian;
 	DeviceFormat.mChannelsPerFrame = 2;
 	DeviceFormat.mBitsPerChannel = 16;
-	DeviceFormat.mBytesPerPacket = 16;
+	DeviceFormat.mBytesPerFrame = DeviceFormat.mChannelsPerFrame*2;
+	DeviceFormat.mFramesPerPacket = 1;
+	DeviceFormat.mBytesPerPacket = DeviceFormat.mFramesPerPacket * DeviceFormat.mBytesPerFrame;
 	
-	//set format to output scope
 	err = AudioUnitSetProperty(
 		auHAL,
 		kAudioUnitProperty_StreamFormat,
-		kAudioUnitScope_Output,
-		1,
+		kAudioUnitScope_Input,
+		0,
 		&DeviceFormat,
 		sizeof(AudioStreamBasicDescription));
 	
 	if (err) {
-		NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:nil];
-		NSString *errstr = [error localizedDescription];
-		const char *s = [errstr UTF8String];
-		hlog(LOG_ERR, "Failed to set AudioUnit default input device: %s", s);
+		hlog_nserr(LOG_ERR, "Failed to set AudioUnit default input device", err);
+		return err;
+	}
+
+#define USING_OSX
+#if defined ( USING_IOS )
+	UInt32 numFramesPerBuffer;
+	size = sizeof(UInt32);
+	err = AudioUnitGetProperty(auHAL,
+			kAudioUnitProperty_MaximumFramesPerSlice,
+			kAudioUnitScope_Global,
+			kOutputBus,
+			&numFramesPerBuffer,
+			&size);
+	if (err) {
+		hlog_nserr(LOG_ERR, "Couldn't get the number of frames per callback", err);
+		return err;
+	}
+	UInt32 bufferSizeBytes = outputFormat.mBytesPerFrame * outputFormat.mFramesPerPacket * numFramesPerBuffer;
+    
+#elif defined ( USING_OSX )
+	// Get the size of the IO buffer(s)
+	UInt32 bufferSizeFrames = 0;
+	size = sizeof(UInt32);
+	err = AudioUnitGetProperty(auHAL,
+		kAudioDevicePropertyBufferFrameSize,
+		kAudioUnitScope_Global,
+		0,
+		&bufferSizeFrames,
+		&size);
+	if (err) {
+		hlog_nserr(LOG_ERR, "Couldn't get buffer frame size from input unit", err);
+		return err;
+	}
+	//UInt32 bufferSizeBytes = bufferSizeFrames * sizeof(UInt16) *2;
+#endif
+	
+	hlog(LOG_DEBUG, "Should set up a buffer of %d frames", bufferSizeFrames);
+	
+	// Set system buffer allocation
+	UInt32 flag = 0;
+	err = AudioUnitSetProperty(auHAL, kAudioUnitProperty_ShouldAllocateBuffer,
+		kAudioUnitScope_Output, 
+		1, &flag, sizeof(flag));
+	if (err) {
+		hlog_nserr(LOG_ERR, "Failed to set AudioUnit system buffering", err);
 		return err;
 	}
 
@@ -172,53 +237,85 @@ OSStatus audiounit_select_default_input()
 		&inputDevice,
 		sizeof(inputDevice));
 	
-	if (err)
+	if (err != noErr)
 		hlog(LOG_ERR, "Failed to set AudioUnit default input device: %s", strerror(err));
 	
 	return err;
 }
 
-AudioBufferList bufferList; /* allocated to hold buffer data  */
+AudioBufferList *bufferList; /* allocated to hold buffer data  */
 
 OSStatus InputProc(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags,
 	const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames,
 	AudioBufferList * ioData)
 {
 	OSStatus err = noErr;
+	SInt16 *sm1, *sm2;
 	
-	hlog(LOG_DEBUG, "InputProc");
+	hlog(LOG_DEBUG, "InputProc inBusNumber %d inNumberFrames %d", inBusNumber, inNumberFrames);
 	
 	err = AudioUnitRender(auHAL,
 		ioActionFlags,
 		inTimeStamp, 
-		inBusNumber,     //will be '1' for input data
-		inNumberFrames, //# of frames requested
-		&bufferList);
-		
+		inBusNumber,     // will be '1' for input data
+		inNumberFrames, // # of frames requested
+		bufferList);
+	
+	if (err != noErr)
+		hlog_nserr(LOG_ERR, "AudioUnitRender failed", err);
+	
+	sm1 = (SInt16 *)bufferList->mBuffers[0].mData;
+	sm2 = (SInt16 *)bufferList->mBuffers[1].mData;
+	
 	return err;
+}
+
+static OSStatus CheckErr(const char *s, OSStatus err)
+{
+	if (err != noErr)
+		hlog_nserr(LOG_ERR, s, err);
+	
+	return err;
+}
+
+static void audiounit_allocate_buffer(void)
+{
+#define BUFFERS 2
+	bufferList = (AudioBufferList*)hmalloc(sizeof(AudioBufferList)
+		+ BUFFERS*sizeof(void *));
+	bufferList->mNumberBuffers = BUFFERS;
+	
+	int bufferSize = 512 * DeviceFormat.mBytesPerFrame;
+	
+	int i;
+	for (i = 0; i < BUFFERS; i++) {
+		hlog(LOG_DEBUG, "Allocating buffer %d of %d bytes", i, bufferSize);
+		bufferList->mBuffers[i].mDataByteSize = bufferSize;
+		bufferList->mBuffers[i].mNumberChannels = 2; //DeviceFormat.mChannelsPerFrame;
+		bufferList->mBuffers[i].mData = hmalloc(bufferSize);
+		memset(bufferList->mBuffers[i].mData, 0, bufferSize);
+	}	
 }
 
 OSStatus audiounit_input_callback_setup(void)
 {
-	int bufferSize = 4096;
-	bufferList.mNumberBuffers = 1;
-	bufferList.mBuffers[0].mDataByteSize = bufferSize;
-	bufferList.mBuffers[0].mNumberChannels = DeviceFormat.mChannelsPerFrame;
-	bufferList.mBuffers[0].mData = hmalloc(sizeof(UInt8) * 1024 * DeviceFormat.mBytesPerPacket);
+	OSStatus err = noErr;
+	audiounit_allocate_buffer();
 	
 	AURenderCallbackStruct input;
 	input.inputProc = InputProc;
 	input.inputProcRefCon = 0;
 	
-	AudioUnitSetProperty(
+	err = AudioUnitSetProperty(
 		auHAL, 
 		kAudioOutputUnitProperty_SetInputCallback, 
 		kAudioUnitScope_Global,
 		0,
 		&input, 
 		sizeof(input));
-	
-	OSStatus err = noErr;
+	if (err)
+		return err;
+		
 	err = AudioUnitInitialize(auHAL);
 	if (err)
 		return err;
@@ -232,6 +329,7 @@ OSStatus audiounit_input_callback_setup(void)
 
 int audiounit_initialize(const char *device)
 {
+	
 	if (audiounit_open(device) < 0)
 		return -1;
 	
