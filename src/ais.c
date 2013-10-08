@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 /*
  *	ais.c
@@ -21,9 +22,7 @@
  */
 
 
-#if HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include "../config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,8 +44,9 @@
 #ifdef HAVE_PULSEAUDIO
 #include "pulseaudio.h"
 #endif
+#ifdef HAVE_AUDIOUNIT
 #include "audiounit.h"
-
+#endif
 
 #ifdef DMALLOC
 #include <dmalloc.h>
