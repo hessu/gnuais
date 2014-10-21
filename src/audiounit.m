@@ -134,8 +134,15 @@ OSStatus audiounit_select_format()
 		return -1;
 	}
 	
+	hlog(LOG_DEBUG, "Sample rate is %.0f, %d bits, %d channels, %d bytes/frame",
+		DeviceFormat.mSampleRate,
+		DeviceFormat.mBitsPerChannel,
+		DeviceFormat.mChannelsPerFrame,
+		DeviceFormat.mBytesPerFrame);
+	
 	//set the desired format to the device's sample rate
-	DeviceFormat.mSampleRate = 44100.0;
+	//DeviceFormat.mSampleRate = 8000.0;
+	/*
 	DeviceFormat.mFormatID = kAudioFormatLinearPCM;
 	DeviceFormat.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger; //kCAFLinearPCMFormatFlagIsLittleEndian;
 	DeviceFormat.mChannelsPerFrame = 2;
@@ -143,7 +150,7 @@ OSStatus audiounit_select_format()
 	DeviceFormat.mBytesPerFrame = DeviceFormat.mChannelsPerFrame*2;
 	DeviceFormat.mFramesPerPacket = 1;
 	DeviceFormat.mBytesPerPacket = DeviceFormat.mFramesPerPacket * DeviceFormat.mBytesPerFrame;
-	
+	*/
 	err = AudioUnitSetProperty(
 		auHAL,
 		kAudioUnitProperty_StreamFormat,
@@ -291,7 +298,7 @@ static void audiounit_allocate_buffer(void)
 	for (i = 0; i < BUFFERS; i++) {
 		hlog(LOG_DEBUG, "Allocating buffer %d of %d bytes", i, bufferSize);
 		bufferList->mBuffers[i].mDataByteSize = bufferSize;
-		bufferList->mBuffers[i].mNumberChannels = 2; //DeviceFormat.mChannelsPerFrame;
+		bufferList->mBuffers[i].mNumberChannels = DeviceFormat.mChannelsPerFrame;
 		bufferList->mBuffers[i].mData = hmalloc(bufferSize);
 		memset(bufferList->mBuffers[i].mData, 0, bufferSize);
 	}	
@@ -337,6 +344,9 @@ int audiounit_initialize(const char *device)
 		return -1;
 	
 	if (audiounit_select_default_input() != noErr)
+		return -1;
+	
+	if (audiounit_select_format() != noErr)
 		return -1;
 	
 	if (audiounit_select_format() != noErr)
