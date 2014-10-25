@@ -1,4 +1,6 @@
-set(SOURCES ais.c ais.c cfg.c crc32.c hlog.c input.c out_mysql.c receiver.c splay.c cache.c range.c cfgfile.c filter.c hmalloc.c out_json.c protodec.c rwlock.c serial.c spsymbol.c)
+set(SOURCES ais.c ais.c cfg.c crc32.c hlog.c input.c out_mysql.c
+   receiver.c splay.c cache.c range.c cfgfile.c filter.c hmalloc.c
+   out_json.c protodec.c rwlock.c serial.c spsymbol.c ipc.c)
 
 if(HAVE_PULSEAUDIO)
         set(SOURCES ${SOURCES} pulseaudio.c)
