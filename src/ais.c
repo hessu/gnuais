@@ -78,10 +78,10 @@ int main(int argc, char *argv[])
 	struct ipc_state_t *ipc = NULL;
 	struct receiver *rx_a = NULL;
 	struct receiver *rx_b = NULL;
-	time_t last_stats = time(NULL);
 #ifdef HAVE_PULSEAUDIO
 	pa_simple *pa_dev = NULL;
 #endif
+	time_t last_stats = time(NULL);
 	
 	/* command line */
 	parse_cmdline(argc, argv);
