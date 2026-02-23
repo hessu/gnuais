@@ -78,13 +78,18 @@ struct udp_state_t *udpout_init(struct udp_config_t *cfg)
 			continue;
 		}
 
-		hlog(LOG_INFO, "UDP: Sending NMEA to %s:%s", c->host, c->port);
+		udp->dests[i].host = hstrdup(c->host);
+		udp->dests[i].port = hstrdup(c->port);
+
+		hlog(LOG_INFO, "UDP: Sending NMEA to %s:%s (af %d fd %d)",
+			c->host, c->port, ai->ai_family, udp->dests[i].fd);
 
 		freeaddrinfo(result);
 		i++;
 	}
 
 	udp->dest_count = i;
+	hlog(LOG_INFO, "UDP: %d destinations configured", udp->dest_count);
 
 	if (udp->dest_count == 0) {
 		hfree(udp->dests);
@@ -105,7 +110,9 @@ int udpout_nmea(struct udp_state_t *udp, const char *nmea, int len)
 			(struct sockaddr *)&udp->dests[i].addr,
 			udp->dests[i].addr_len);
 		if (ret < 0) {
-			hlog(LOG_ERR, "UDP: sendto() failed: %s", strerror(errno));
+			hlog(LOG_ERR, "UDP: sendto() to %s:%s fd %d failed: %s",
+				udp->dests[i].host, udp->dests[i].port,
+				udp->dests[i].fd, strerror(errno));
 		}
 	}
 
@@ -122,6 +129,8 @@ void udpout_close(struct udp_state_t *udp)
 	for (i = 0; i < udp->dest_count; i++) {
 		if (udp->dests[i].fd >= 0)
 			close(udp->dests[i].fd);
+		hfree(udp->dests[i].host);
+		hfree(udp->dests[i].port);
 	}
 
 	hfree(udp->dests);

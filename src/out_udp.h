@@ -27,6 +27,8 @@ struct udp_dest_t {
 	struct sockaddr_storage addr;
 	socklen_t addr_len;
 	int fd;
+	char *host;
+	char *port;
 };
 
 struct udp_state_t {
