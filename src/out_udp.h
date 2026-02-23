@@ -1,9 +1,7 @@
-
 /*
- *	receiver.h
+ *	out_udp.h
  *
- *	(c) Ruben Undheim 2008
- *	(c) Heikki Hannikainen 2008
+ *	(c) Heikki Hannikainen, OH7LZB <hessu@hes.iki.fi>
  *
  *    This program is free software; you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -20,34 +18,24 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#ifndef INC_OUT_UDP_H
+#define INC_OUT_UDP_H
 
-#ifndef INC_RECEIVER_H
-#define INC_RECEIVER_H
+#include "cfg.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
-
-#include "protodec.h"
-#include "ipc.h"
-
-struct receiver {
-	struct filter *filter;
-	char name;
-	int lastbit;
-	int num_ch;
-	int ch_ofs;
-	unsigned int pll;
-	unsigned int pllinc;
-	struct demod_state_t *decoder;
-	int prev;
-	time_t last_levellog;
+struct udp_dest_t {
+	struct sockaddr_storage addr;
+	socklen_t addr_len;
+	int fd;
 };
 
-extern struct receiver *init_receiver(char name, int num_ch, int ch_ofs, struct serial_state_t *serial, struct ipc_state_t *ipc, struct udp_state_t *udp);
-extern void free_receiver(struct receiver *rx);
+struct udp_state_t {
+	struct udp_dest_t *dests;
+	int dest_count;
+};
 
-extern void receiver_run(struct receiver *rx, short *buf, int len);
+extern struct udp_state_t *udpout_init(struct udp_config_t *cfg);
+extern int udpout_nmea(struct udp_state_t *udp, const char *nmea, int len);
+extern void udpout_close(struct udp_state_t *udp);
 
 #endif
