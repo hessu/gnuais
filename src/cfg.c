@@ -183,6 +183,11 @@ int do_nmeaudp(struct udp_config_t **lq, int argc, char **argv)
 	if (argc < 2)
 		return -1;
 
+	if (argc > 2) {
+		hlog(LOG_ERR, "nmeaudp: Only one host:port allowed per nmeaudp directive, %d args given", argc - 1);
+		return -1;
+	}
+
 	arg = argv[1];
 
 	if (arg[0] == '[') {
